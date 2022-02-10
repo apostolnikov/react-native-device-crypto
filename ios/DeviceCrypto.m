@@ -40,7 +40,7 @@ typedef NS_ENUM(NSUInteger, AccessLevel) {
     (id)kSecAttrApplicationTag:  (id)alias,
     (id)kSecReturnRef:           (id)kCFBooleanTrue,
   };
-  
+
   CFTypeRef resultTypeRef = NULL;
   OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef) query, &resultTypeRef);
   if (status == errSecSuccess) {
@@ -62,7 +62,7 @@ typedef NS_ENUM(NSUInteger, AccessLevel) {
     (id)kSecReturnData:          (id)kCFBooleanTrue,
     (id)kSecReturnRef:           (id)kCFBooleanTrue,
   };
-  
+
   SecKeyRef keyRef;
   OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef) query, (CFTypeRef *)&keyRef);
   if (status == errSecSuccess) {
@@ -97,7 +97,7 @@ typedef NS_ENUM(NSUInteger, AccessLevel) {
     0x42, 0x00};
   NSData *asnHeaderData = [NSData dataWithBytes:asnHeader length:sizeof(asnHeader)];
   NSData *publicKeyBits = [self getPublicKeyBits:alias];
-  
+
   if (publicKeyBits == nil){
     return nil;
   }
@@ -105,7 +105,7 @@ typedef NS_ENUM(NSUInteger, AccessLevel) {
   payload = [[NSMutableData alloc] init];
   [payload appendData:asnHeaderData];
   [payload appendData:publicKeyBits];
-  
+
   NSData *immutablePEM = [NSData dataWithData:payload];
   NSString* base64EncodedString = [(NSData*)immutablePEM base64EncodedStringWithOptions:NSDataBase64Encoding64CharacterLineLength];
   NSString* pemString = [NSString stringWithFormat:@"-----BEGIN PUBLIC KEY-----\n%@\n-----END PUBLIC KEY-----", base64EncodedString];
@@ -123,14 +123,14 @@ typedef NS_ENUM(NSUInteger, AccessLevel) {
     (id)kSecValueRef:           (__bridge id)publicKeyRef,
     (id)kSecAttrIsPermanent:    (id)kCFBooleanTrue,
   };
-  
+
   OSStatus status = SecItemAdd((CFDictionaryRef)attributes, nil);
   while (status == errSecDuplicateItem)
   {
     status = SecItemDelete((CFDictionaryRef)attributes);
   }
   status = SecItemAdd((CFDictionaryRef)attributes, nil);
-  
+
   return true;
 }
 
@@ -164,7 +164,7 @@ typedef NS_ENUM(NSUInteger, AccessLevel) {
     (id)kSecReturnRef:           (id)kCFBooleanTrue,
     (id)kSecUseOperationPrompt:  authenticationPrompt,
   };
-  
+
   CFTypeRef resultTypeRef = NULL;
   OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef) query,  (CFTypeRef *)&resultTypeRef);
   if (status == errSecSuccess)
@@ -201,7 +201,7 @@ typedef NS_ENUM(NSUInteger, AccessLevel) {
 - (BOOL) hasPassCode {
   NSError *aerr = nil;
   LAContext *context = [[LAContext alloc] init];
-  return [context canEvaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics error:&aerr];
+  return [context canEvaluatePolicy:LAPolicyDeviceOwnerAuthentication error:&aerr];
 }
 
 - (NSString*) getOrCreateKey:(nonnull NSData*) alias withOptions:(nonnull NSDictionary *)options
@@ -216,7 +216,7 @@ typedef NS_ENUM(NSUInteger, AccessLevel) {
   SecAccessControlCreateFlags acFlag = kSecAccessControlPrivateKeyUsage;
   int accessLevel = [options[kAccessLevel] intValue];
   BOOL invalidateOnNewBiometry = options[kInvalidateOnNewBiometry] && [options[kInvalidateOnNewBiometry] boolValue];
-  
+
   switch(accessLevel) {
     case UNLOCKED_DEVICE:
       if (![self hasPassCode]) {
@@ -240,13 +240,13 @@ typedef NS_ENUM(NSUInteger, AccessLevel) {
       keyAccessLevel = kSecAttrAccessibleAfterFirstUnlock;
       acFlag = kSecAccessControlPrivateKeyUsage;
   }
-  
+
   SecAccessControlRef acRef = SecAccessControlCreateWithFlags(kCFAllocatorDefault, keyAccessLevel, acFlag, &error);
-  
+
   if (!acRef) {
     [NSException raise:@"E1711" format:@"Could not create access control."];
   }
-  
+
   NSDictionary* attributes =
   @{ (id)kSecAttrKeyType:        (id)kSecAttrKeyTypeECSECPrimeRandom,
      (id)kSecAttrTokenID:        (id)kSecAttrTokenIDSecureEnclave,
@@ -263,7 +263,7 @@ typedef NS_ENUM(NSUInteger, AccessLevel) {
               (id)kSecAttrIsPermanent:    (id)kCFBooleanFalse,
             },
   };
-  
+
   privateKeyRef = SecKeyCreateRandomKey((__bridge CFDictionaryRef)attributes, &error);
   if (!privateKeyRef){
     [NSException raise:@"E1712" format:@"SecKeyCreate could not create key."];
@@ -281,7 +281,7 @@ RCT_EXPORT_METHOD(createKey:(nonnull NSData *)alias withOptions:(nonnull NSDicti
   @try {
     NSString *keyType = options[kKeyType];
     NSString* publicKey = [self getOrCreateKey:alias withOptions:options];
-    
+
     if (keyType.intValue == ASYMMETRIC) {
       resolve(publicKey);
     } else {
@@ -296,7 +296,7 @@ RCT_EXPORT_METHOD(deleteKey:(nonnull NSData *)alias resolver:(RCTPromiseResolveB
 {
   [self deletePublicKey:alias];
   [self deletePrivateKey:alias];
-  
+
   return resolve(@(YES));
 }
 
@@ -307,20 +307,20 @@ RCT_EXPORT_METHOD(sign:(nonnull NSData *)alias withPlainText:(nonnull NSString *
     NSData *textToBeSigned = [plainText dataUsingEncoding:NSUTF8StringEncoding];
     NSString *authMessage = options[kAuthenticatePrompt];
     SecKeyRef privateKeyRef = [self getPrivateKeyRef:alias withMessage:authMessage];
-    
+
     bool canSign = SecKeyIsAlgorithmSupported(privateKeyRef, kSecKeyOperationTypeSign, kSecKeyAlgorithmECDSASignatureMessageX962SHA256);
     if (!canSign) {
       [NSException raise:@"E1719 - Device cannot sign." format:@"%@", nil];
     }
-    
+
     NSData *signatureBytes = (NSData*)CFBridgingRelease(SecKeyCreateSignature(privateKeyRef, kSecKeyAlgorithmECDSASignatureMessageX962SHA256, (CFDataRef)textToBeSigned, &aerr));
     if (aerr) {
       [NSException raise:@"E1720 - Signature creation." format:@"%@", aerr];
     }
-    
+
     if (privateKeyRef) { CFRelease(privateKeyRef); }
     if (aerr) { CFRelease(aerr); }
-    
+
     resolve([signatureBytes base64EncodedStringWithOptions:0]);
   } @catch(NSException *err) {
     reject(err.name, err.description, nil);
@@ -334,12 +334,12 @@ RCT_EXPORT_METHOD(encrypt:(nonnull NSData *)alias withPlainText:(nonnull NSStrin
     NSData* cipherText = nil;
     NSData *textToBeEncrypted = [plainText dataUsingEncoding:NSUTF8StringEncoding];
     SecKeyRef publicKey = [self getPublicKeyRef:alias];
-    
+
     BOOL canEncrypt = SecKeyIsAlgorithmSupported(publicKey, kSecKeyOperationTypeEncrypt, kSecKeyAlgorithmECIESEncryptionCofactorX963SHA256AESGCM);
     if (!canEncrypt) {
       [NSException raise:@"E1759 - Device cannot encrypt." format:@"%@", nil];
     }
-    
+
     cipherText = (NSData*)CFBridgingRelease(
                                             SecKeyCreateEncryptedData(publicKey,
                                                                       kSecKeyAlgorithmECIESEncryptionCofactorX963SHA256AESGCM,
@@ -348,10 +348,10 @@ RCT_EXPORT_METHOD(encrypt:(nonnull NSData *)alias withPlainText:(nonnull NSStrin
     if (!cipherText || aerr) {
       [NSException raise:@"E1760 - Encryption error." format:@"%@", aerr];
     }
-    
+
     if (publicKey) { CFRelease(publicKey); }
     if (aerr) { CFRelease(aerr); }
-    
+
     resolve(@{
       @"iv": @"NotRequired",
       @"encryptedText": [cipherText base64EncodedStringWithOptions:0],
@@ -369,26 +369,26 @@ RCT_EXPORT_METHOD(decrypt:(nonnull NSData *)alias withPlainText:(nonnull NSStrin
     NSData *textToBeDecrypted = [[NSData alloc] initWithBase64EncodedString:plainText options:0];
     NSString *authMessage = options[kAuthenticatePrompt];
     SecKeyRef privateKeyRef = [self getPrivateKeyRef:alias withMessage:authMessage];
-    
+
     BOOL canDecrypt = SecKeyIsAlgorithmSupported(privateKeyRef, kSecKeyOperationTypeDecrypt, kSecKeyAlgorithmECIESEncryptionCofactorX963SHA256AESGCM);
-    
+
     if (!canDecrypt) {
       [NSException raise:@"E1759 - Device cannot encrypt." format:@"%@", nil];
     }
-    
+
     clearText = (NSData*)CFBridgingRelease(
                                            SecKeyCreateDecryptedData(privateKeyRef,
                                                                      kSecKeyAlgorithmECIESEncryptionCofactorX963SHA256AESGCM,
                                                                      (__bridge CFDataRef)textToBeDecrypted,
                                                                      &aerr));
-    
+
     if (!clearText || aerr) {
       [NSException raise:@"E1760 - Decryption error." format:@"%@", aerr];
     }
-    
+
     if (privateKeyRef) { CFRelease(privateKeyRef); }
     if (aerr) { CFRelease(aerr); }
-    
+
     resolve([[NSString alloc] initWithData:clearText   encoding:NSUTF8StringEncoding]);
   } @catch(NSException *err) {
     reject(err.name, err.description, nil);
@@ -432,7 +432,7 @@ RCT_EXPORT_METHOD(deviceSecurityLevel:(RCTPromiseResolveBlock)resolve rejecter:(
       resolve(@"PIN_OR_PATTERN");
       return;
     }
-    
+
     resolve(@"NOT_PROTECTED");
   } @catch(NSException *err) {
     reject(err.name, err.reason, nil);
@@ -445,11 +445,11 @@ RCT_EXPORT_METHOD(getBiometryType:(RCTPromiseResolveBlock)resolve rejecter:(RCTP
     NSError *aerr = nil;
     LAContext *context = [[LAContext alloc] init];
     BOOL canBeProtected = [context canEvaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics error:&aerr];
-    
+
     if (aerr || !canBeProtected) {
       [NSException raise:@"Couldn't get biometry type" format:@"%@", aerr];
     }
-    
+
     if (@available(iOS 11, *)) {
       if (context.biometryType == LABiometryTypeFaceID) {
         resolve(@"FACE");
@@ -467,7 +467,7 @@ RCT_EXPORT_METHOD(getBiometryType:(RCTPromiseResolveBlock)resolve rejecter:(RCTP
         return;
       }
     }
-    
+
     resolve(@"TOUCH");
   } @catch (NSException *err) {
     reject(err.name, err.description, nil);
@@ -481,7 +481,7 @@ RCT_EXPORT_METHOD(authenticateWithBiometry:(nonnull NSDictionary *)options resol
     if (options && options[kAuthenticatePrompt]){
       authMessage = options[kAuthenticatePrompt];
     }
-    
+
     LAContext *context = [[LAContext alloc] init];
     context.localizedFallbackTitle = @"";
     [context evaluatePolicy:LAPolicyDeviceOwnerAuthenticationWithBiometrics localizedReason:authMessage reply:^(BOOL success, NSError *aerr) {
