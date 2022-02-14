@@ -29,7 +29,6 @@
     "release": "release-it",
     "example": "yarn --cwd example",
     "pods": "cd example && pod-install --quiet",
-    "postinstall": "yarn && yarn prepare",
     "bootstrap": "yarn example && yarn && yarn pods"
   },
   "keywords": [
